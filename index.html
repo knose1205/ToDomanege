@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ToDo</title>
+<style>
+  /* ===== デザイントークン(変更なし) ===== */
+  :root{
+    --purple:#534AB7; --purple-light:#F6F5FC; --purple-lighter:#EFEEF6;
+    --border:#E4E2F0; --text:#2A2A33; --muted:#71708A; --muted2:#9C99AD; --muted3:#B7B4C6;
+    --bg:#FAFAFC; --white:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  html, body{ height:100%; }
+  body{
+    margin:0;
+    font-family:sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+
+  button:focus-visible{
+    outline:2px solid var(--purple);
+    outline-offset:2px;
+  }
+
+  /* ===== アプリ全体のシェル =====
+     モバイル: 縦一枚(header → main → tabbar)
+     タブレット: 同じ縦構成だが、余白を持たせたカードとして中央表示
+     デスクトップ: 横並び(サイドバー + コンテンツ)に切り替え         */
+  #app{
+    position:relative;
+    max-width:440px;
+    margin:0 auto;
+    min-height:100vh;
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    background:var(--white);
+  }
+
+  .content{
+    display:contents; /* モバイル/タブレットでは透明なラッパーとして振る舞う */
+  }
+
+  header{
+    order:1;
+    padding:16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid transparent;
+  }
+  header > div{
+    font-weight:700;
+    font-size:18px;
+  }
+  .sync-time{
+    font-weight:400 !important;
+    font-size:11px !important;
+    color:var(--muted3);
+  }
+
+  main{
+    order:1;
+    flex:1;
+    overflow-y:auto;
+    padding:16px;
+  }
+
+  .card{
+    background:var(--white);
+    border:1px solid var(--border);
+    border-radius:16px;
+    margin-bottom:10px;
+    padding:14px 14px 14px 16px;
+  }
+  .card-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .card-title{
+    flex:1;
+    cursor:pointer;
+    line-height:1.4;
+    word-break:break-word;
+  }
+  .card-due{
+    margin-top:6px;
+    font-size:12px;
+    color:var(--muted2);
+    padding-left:2px;
+  }
+  .card-due.overdue{
+    color:#C0392B;
+  }
+  .add-child-btn{
+    flex-shrink:0;
+    width:26px;
+    height:26px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--purple-lighter);
+    color:var(--purple);
+    font-size:15px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .edit-btn{
+    flex-shrink:0;
+    width:26px;
+    height:26px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--white);
+    color:var(--muted);
+    font-size:13px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .drag-handle{
+    flex-shrink:0;
+    width:22px;
+    text-align:center;
+    color:var(--muted3);
+    cursor:grab;
+    touch-action:none;
+    font-size:16px;
+    line-height:1;
+    user-select:none;
+  }
+  .card.dragging{
+    opacity:0.4;
+  }
+  .card.drop-before{
+    box-shadow:0 -3px 0 0 var(--purple);
+  }
+  .card.drop-after{
+    box-shadow:0 3px 0 0 var(--purple);
+  }
+  .progress-badge{
+    flex-shrink:0;
+    font-size:11px;
+    font-weight:700;
+    color:var(--purple);
+    background:var(--purple-light);
+    border-radius:8px;
+    padding:2px 7px;
+  }
+  .cleanup-bar{
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:12px;
+  }
+  .cleanup-btn{
+    font-size:12px;
+    padding:8px 12px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--white);
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .cleanup-btn:hover{
+    color:#C0392B;
+    border-color:#C0392B;
+  }
+  .children{
+    margin-top:8px;
+    margin-left:20px;
+    padding-left:12px;
+    border-left:2px solid var(--purple-lighter);
+  }
+  .empty-state{
+    color:var(--muted2);
+    font-size:14px;
+    text-align:center;
+    padding:32px 12px;
+  }
+
+  .tabbar{
+    order:2;
+    display:flex;
+    border-top:1px solid var(--border);
+    background:var(--white);
+    flex-shrink:0;
+  }
+  .tabbar button{
+    flex:1;
+    padding:15px;
+    border:none;
+    background:none;
+    color:var(--muted2);
+    cursor:pointer;
+    font-size:14px;
+  }
+  .tabbar button.active{
+    color:var(--purple);
+    font-weight:700;
+    background:var(--purple-light);
+  }
+
+  .fab{
+    position:absolute; /* #appを基準に固定するため fixed ではなく absolute */
+    right:20px;
+    bottom:80px;
+    width:52px;
+    height:52px;
+    border-radius:50%;
+    background:var(--purple);
+    color:#fff;
+    border:none;
+    font-size:24px;
+    cursor:pointer;
+    box-shadow:0 8px 20px rgba(83,74,183,0.35);
+    z-index:5;
+  }
+
+  /* ===== カレンダータブ ===== */
+  .cal-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .cal-title{
+    font-weight:700;
+    font-size:16px;
+  }
+  .cal-nav{
+    width:32px;
+    height:32px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--white);
+    color:var(--purple);
+    font-size:18px;
+    cursor:pointer;
+  }
+  .cal-weekdays{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    text-align:center;
+    font-size:11px;
+    color:var(--muted2);
+    margin-bottom:4px;
+  }
+  .cal-grid{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    gap:4px;
+    margin-bottom:20px;
+  }
+  .cal-cell{
+    position:relative;
+    aspect-ratio:1;
+    border:1px solid transparent;
+    border-radius:10px;
+    background:var(--purple-lighter);
+    color:var(--text);
+    font-size:13px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    padding:2px;
+  }
+  .cal-cell.empty{
+    background:transparent;
+    cursor:default;
+  }
+  .cal-cell.today{
+    border-color:var(--purple);
+  }
+  .cal-cell.selected{
+    background:var(--purple);
+    color:#fff;
+  }
+  .cal-dot{
+    font-size:10px;
+    background:var(--purple);
+    color:#fff;
+    border-radius:8px;
+    padding:0 5px;
+    line-height:1.4;
+  }
+  .cal-cell.selected .cal-dot{
+    background:#fff;
+    color:var(--purple);
+  }
+  .cal-day-list-title{
+    font-size:13px;
+    color:var(--muted);
+    font-weight:700;
+    margin-bottom:8px;
+  }
+
+  /* ===== タブレット: 余白のあるカードとして中央表示 ===== */
+  @media (min-width:680px){
+    body{ padding:24px 16px; }
+    #app{
+      max-width:600px;
+      min-height:calc(100vh - 48px);
+      min-height:calc(100dvh - 48px);
+      border:1px solid var(--border);
+      border-radius:24px;
+      overflow:hidden;
+      box-shadow:0 24px 60px rgba(83,74,183,0.08);
+    }
+    header{ padding:24px 28px 16px; }
+    header > div{ font-size:20px; }
+    main{ padding:20px 28px; }
+    .fab{ right:28px; bottom:88px; }
+  }
+
+  /* ===== デスクトップ: サイドバー + グリッド表示 ===== */
+  @media (min-width:1024px){
+    body{ padding:32px 24px; }
+    #app{
+      max-width:1040px;
+      flex-direction:row;
+      min-height:calc(100vh - 64px);
+      min-height:calc(100dvh - 64px);
+    }
+    .content{
+      display:flex;
+      flex-direction:column;
+      flex:1;
+      min-width:0;
+      order:2;
+    }
+    header{ padding:28px 32px 8px; }
+    main{
+      padding:24px 32px 32px;
+    }
+    .task-list{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));
+      gap:12px;
+      align-content:start;
+    }
+    .task-list .children{
+      grid-column:1 / -1; /* 派生タスクはグリッドをまたいで下に表示 */
+      margin-left:20px;
+    }
+    .card{ margin-bottom:0; }
+
+    .tabbar{
+      order:1;
+      flex-direction:column;
+      width:200px;
+      flex-shrink:0;
+      border-top:none;
+      border-right:1px solid var(--border);
+      justify-content:flex-start;
+      align-items:stretch;
+      padding:24px 12px;
+      gap:4px;
+    }
+    .tabbar button{
+      flex:none;
+      text-align:left;
+      padding:12px 16px;
+      border-radius:12px;
+    }
+    .tabbar button.active{
+      border-radius:12px;
+    }
+    .fab{ right:32px; bottom:32px; }
+  }
+  /* ===== タスク追加モーダル ===== */
+  #taskModalBackdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(42,42,51,0.45);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:50;
+    padding:16px;
+  }
+  #taskModalBackdrop.open{ display:flex; }
+  #taskModal{
+    background:var(--white);
+    border-radius:20px;
+    padding:24px;
+    width:100%;
+    max-width:340px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.25);
+  }
+  #taskModal h2{
+    margin:0 0 16px;
+    font-size:17px;
+  }
+  .modal-label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  #taskModal input{
+    width:100%;
+    padding:10px 12px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    font-size:15px;
+    font-family:inherit;
+    margin-bottom:16px;
+    color:var(--text);
+  }
+  #taskModal input:focus-visible{
+    outline:2px solid var(--purple);
+    outline-offset:1px;
+  }
+  .modal-actions{
+    display:flex;
+    gap:8px;
+  }
+  .modal-btn{
+    flex:1;
+    padding:11px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    font-size:14px;
+    cursor:pointer;
+    background:var(--white);
+    color:var(--text);
+  }
+  .modal-btn.confirm{
+    background:var(--purple);
+    border-color:var(--purple);
+    color:#fff;
+    font-weight:700;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="content">
+    <header><div>ToDo</div><div id="syncTime" class="sync-time"></div></header>
+    <main id="main"></main>
+  </div>
+  <button class="fab" id="fabBtn">+</button>
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="todo" class="active">未処理</button>
+    <button data-tab="calendar">カレンダー</button>
+    <button data-tab="done">完了</button>
+  </nav>
+
+  <div id="taskModalBackdrop">
+    <div id="taskModal">
+      <h2 id="taskModalTitle">タスクを追加</h2>
+      <label class="modal-label" for="taskTitleInput">タスク名</label>
+      <input type="text" id="taskTitleInput" placeholder="例: 資料をまとめる" />
+      <label class="modal-label" for="taskDueInput">締切日(任意)</label>
+      <input type="date" id="taskDueInput" />
+      <div class="modal-actions">
+        <button class="modal-btn cancel" id="taskModalCancel">キャンセル</button>
+        <button class="modal-btn confirm" id="taskModalConfirm">追加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ★ここにGASウェブアプリURLを貼り付けてください
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycby1eMktiNKVyr_MX0MBo5MEQtQ0TgfI2FglPeQFgY_3uCKvfwRGCjZKmNmFFJ_rItv0/exec';
+
+  // タスクの形: { id, title, completed, parentId, dueDate }
+  // parentId で親子関係を持たせることで、派生タスクを何段階でも作れる
+  let state = { tasks: [], view: 'todo', calendarDate: new Date(), selectedDate: null };
+
+  function newId() {
+    return 't' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function formatDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // データ同期ロジック
+  let isSyncing = false;
+  let pendingPushCount = 0; // 保存待ち(キュー中を含む)の件数。0より大きい間はポーリングを止める
+  let lastTasksSnapshot = null; // 直前に描画したタスクの内容(不要な再描画を避けるため)
+  let isDragging = false; // 並び替えドラッグ中はポーリングを止める(再描画で操作が壊れないように)
+
+  // <script>タグでの読み込みはCORSの対象外になることを利用したJSONPリクエスト
+  // 読み込みだけでなく、書き込み(action=set)もこの仕組みで行うことで、
+  // 「本当に保存できたか」をサーバーからの返事で確認できるようにしている
+  function jsonpRequest(url, params) {
+    return new Promise((resolve, reject) => {
+      const callbackName = 'jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+      const script = document.createElement('script');
+      let settled = false;
+
+      function cleanup() {
+        delete window[callbackName];
+        script.remove();
+        clearTimeout(timeoutId);
+      }
+
+      window[callbackName] = (data) => {
+        settled = true;
+        cleanup();
+        resolve(data);
+      };
+
+      script.onerror = () => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(new Error('通信に失敗しました(スクリプトの読み込みエラー)'));
+        }
+      };
+
+      const query = new URLSearchParams({
+        ...(params || {}),
+        callback: callbackName,
+        t: Date.now(),
+      });
+      script.src = url + '?' + query.toString();
+      document.body.appendChild(script);
+
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(new Error('通信がタイムアウトしました'));
+        }
+      }, 15000);
+    });
+  }
+
+  async function syncData() {
+    if (isSyncing) return; // 前回の取得がまだ終わっていなければスキップ
+    isSyncing = true;
+    try {
+      const data = await jsonpRequest(GAS_URL, { action: 'get' });
+      const tasksJson = data.tasks || '[]';
+      // 内容が前回と同じなら、無駄な再描画(一瞬のチラつきの原因)を避けるためスキップする
+      if (tasksJson !== lastTasksSnapshot) {
+        lastTasksSnapshot = tasksJson;
+        state.tasks = JSON.parse(tasksJson);
+        render();
+      }
+      const syncTimeEl = document.getElementById('syncTime');
+      if (syncTimeEl) {
+        const now = new Date();
+        syncTimeEl.textContent = '同期: ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+      }
+    } catch (err) {
+      console.error('同期(取得)に失敗しました:', err);
+      const syncTimeEl = document.getElementById('syncTime');
+      if (syncTimeEl) syncTimeEl.textContent = '同期エラー';
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  // 保存リクエストを直列化するためのキュー。
+  // 同時に複数回保存が走ると、後から追加したタスクを含む新しい状態より先に
+  // 古い状態の保存が完了してしまい、結果的に新しいタスクが消えることがあるため、
+  // 必ず1つずつ、呼ばれた順番通りに実行する。
+  let pushQueue = Promise.resolve();
+
+  function pushData() {
+    // キューに入れた瞬間からカウントする(まだ実行が始まっていなくてもポーリングを止めるため)
+    pendingPushCount++;
+    pushQueue = pushQueue
+      .then(() => pushDataOnce())
+      .catch(() => {})
+      .finally(() => { pendingPushCount--; });
+    return pushQueue;
+  }
+
+  async function pushDataOnce() {
+    try {
+      // 送信直前の最新状態を使う(キューで待っている間に変わっている可能性があるため)
+      const tasksJson = JSON.stringify(state.tasks);
+      const result = await jsonpRequest(GAS_URL, {
+        action: 'set',
+        payload: tasksJson,
+      });
+      if (!result || result.ok !== true) {
+        throw new Error((result && result.error) || '保存に失敗しました');
+      }
+      // 保存できた内容をそのままスナップショットにしておき、
+      // 直後のポーリングで同じ内容を読んでも再描画が走らないようにする
+      lastTasksSnapshot = tasksJson;
+    } catch (err) {
+      console.error('同期(送信)に失敗しました:', err);
+      alert('保存に失敗しました。通信環境を確認して、もう一度お試しください。');
+      // 保存に失敗した場合は、表示がサーバー側とズレないようサーバーの状態に合わせ直す
+      await syncData();
+    }
+  }
+
+  // 指定した条件(未処理/完了)を満たすタスクだけで親子ツリーを組み立てる
+  // 親が条件から外れている場合、その子はこのビューの一番上の階層として扱う
+  function buildForest(predicate) {
+    const byId = {};
+    state.tasks.forEach((t) => { byId[t.id] = { ...t, children: [] }; });
+    const roots = [];
+    state.tasks.forEach((t) => {
+      if (!predicate(t)) return;
+      const node = byId[t.id];
+      const parent = t.parentId ? byId[t.parentId] : null;
+      if (parent && predicate(parent)) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    return roots;
+  }
+
+  function dueDateHtml(task) {
+    if (!task.dueDate) return '';
+    const isOverdue = !task.completed && task.dueDate < formatDate(new Date());
+    return `<div class="card-due${isOverdue ? ' overdue' : ''}">締切: ${task.dueDate}</div>`;
+  }
+
+  // 指定タスクの「すべての子孫」を対象に、完了数と総数を数える(親タスクの進捗バッジ用)
+  function countDescendantProgress(taskId) {
+    let total = 0;
+    let done = 0;
+    function walk(id) {
+      state.tasks.forEach((t) => {
+        if (t.parentId === id) {
+          total++;
+          if (t.completed) done++;
+          walk(t.id);
+        }
+      });
+    }
+    walk(taskId);
+    return { total, done };
+  }
+
+  function progressBadgeHtml(taskId) {
+    const { total, done } = countDescendantProgress(taskId);
+    if (total === 0) return '';
+    return `<span class="progress-badge">${done}/${total}</span>`;
+  }
+
+  function taskNodeHtml(node) {
+    const childrenHtml = node.children.length
+      ? `<div class="children">${node.children.map(taskNodeHtml).join('')}</div>`
+      : '';
+    return `
+      <div class="card" data-id="${node.id}" data-parent-id="${node.parentId || ''}">
+        <div class="card-row">
+          <span class="drag-handle" data-drag-id="${node.id}" title="ドラッグで並び替え">⠿</span>
+          <div class="card-title" onclick="toggleTask('${node.id}')">${node.completed ? '✓' : '□'} ${escapeHtml(node.title)}</div>
+          ${progressBadgeHtml(node.id)}
+          <button class="edit-btn" title="編集" onclick="editTask('${node.id}')">✎</button>
+          <button class="add-child-btn" title="派生タスクを追加" onclick="addChildTask('${node.id}')">＋</button>
+        </div>
+        ${dueDateHtml(node)}
+      </div>
+      ${childrenHtml}
+    `;
+  }
+
+  function renderTaskList(main) {
+    const predicate = state.view === 'done' ? (t) => t.completed : (t) => !t.completed;
+    const forest = buildForest(predicate);
+    const completedCount = state.tasks.filter((t) => t.completed).length;
+    const cleanupBar = (state.view === 'done' && completedCount > 0)
+      ? `<div class="cleanup-bar"><button class="cleanup-btn" onclick="cleanupCompleted()">🗑 完了済みを整理(${completedCount}件)</button></div>`
+      : '';
+    main.innerHTML = cleanupBar + (forest.length
+      ? `<div class="task-list">${forest.map(taskNodeHtml).join('')}</div>`
+      : `<div class="empty-state">${state.view === 'done' ? '完了したタスクはありません' : 'タスクがありません。右下の＋から追加できます'}</div>`);
+  }
+
+  function renderCalendar(main) {
+    const d = state.calendarDate;
+    const year = d.getFullYear();
+    const month = d.getMonth(); // 0-11
+    const startWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const tasksByDate = {};
+    state.tasks.forEach((t) => {
+      if (t.dueDate) (tasksByDate[t.dueDate] = tasksByDate[t.dueDate] || []).push(t);
+    });
+
+    const todayStr = formatDate(new Date());
+    if (!state.selectedDate) state.selectedDate = todayStr;
+
+    let cells = '';
+    for (let i = 0; i < startWeekday; i++) cells += `<div class="cal-cell empty"></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = formatDate(new Date(year, month, day));
+      const count = (tasksByDate[dateStr] || []).length;
+      const cls = ['cal-cell'];
+      if (dateStr === todayStr) cls.push('today');
+      if (dateStr === state.selectedDate) cls.push('selected');
+      cells += `<button class="${cls.join(' ')}" data-date="${dateStr}">
+        <span>${day}</span>
+        ${count ? `<span class="cal-dot">${count}</span>` : ''}
+      </button>`;
+    }
+
+    const selectedTasks = tasksByDate[state.selectedDate] || [];
+
+    main.innerHTML = `
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrev">‹</button>
+        <div class="cal-title">${year}年${month + 1}月</div>
+        <button class="cal-nav" id="calNext">›</button>
+      </div>
+      <div class="cal-weekdays">${['日', '月', '火', '水', '木', '金', '土'].map((w) => `<div>${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+      <div class="cal-day-list">
+        <div class="cal-day-list-title">${state.selectedDate} が締切のタスク</div>
+        ${selectedTasks.length
+          ? selectedTasks.map((t) => `
+              <div class="card">
+                <div class="card-row">
+                  <div class="card-title" onclick="toggleTask('${t.id}')">${t.completed ? '✓' : '□'} ${escapeHtml(t.title)}</div>
+                </div>
+              </div>
+            `).join('')
+          : '<div class="empty-state">この日が締切のタスクはありません</div>'}
+      </div>
+    `;
+
+    document.getElementById('calPrev').addEventListener('click', () => {
+      state.calendarDate = new Date(year, month - 1, 1);
+      render();
+    });
+    document.getElementById('calNext').addEventListener('click', () => {
+      state.calendarDate = new Date(year, month + 1, 1);
+      render();
+    });
+    main.querySelectorAll('.cal-cell[data-date]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.selectedDate = btn.dataset.date;
+        render();
+      });
+    });
+  }
+
+  // 描画ロジック
+  function render() {
+    const main = document.getElementById('main');
+    if (state.view === 'calendar') {
+      renderCalendar(main);
+    } else {
+      renderTaskList(main);
+    }
+  }
+
+  // タブ切り替え
+  document.getElementById('tabbar').addEventListener('click', (e) => {
+    if(e.target.tagName === 'BUTTON') {
+      state.view = e.target.dataset.tab;
+      document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b === e.target));
+      render();
+    }
+  });
+
+  // タスク操作
+  window.toggleTask = (id) => {
+    const t = state.tasks.find(x => x.id === id);
+    if(t) {
+      t.completed = !t.completed;
+      pushData();
+      render();
+    }
+  };
+
+  // 完了済みタスクの一括削除
+  // (完了していないタスクを巻き込まないよう、完了しているものだけを取り除く。
+  //  もし完了タスクの下に未完了の派生が残っていた場合は、buildForestの仕組みにより
+  //  自動的に一番上の階層のタスクとして表示され続けるので、データが消えることはない)
+  window.cleanupCompleted = () => {
+    const completedCount = state.tasks.filter((t) => t.completed).length;
+    if (completedCount === 0) return;
+    if (!confirm(`完了済みのタスクを${completedCount}件削除します。よろしいですか?`)) return;
+    state.tasks = state.tasks.filter((t) => !t.completed);
+    pushData();
+    render();
+  };
+
+  function promptNewTask(parentId) {
+    openTaskModal('add', parentId);
+  }
+
+  window.editTask = (id) => {
+    openTaskModal('edit', id);
+  };
+
+  // --- タスク追加/編集モーダル(共通) ---
+  const taskModalBackdrop = document.getElementById('taskModalBackdrop');
+  const taskModalTitle = document.getElementById('taskModalTitle');
+  const taskTitleInput = document.getElementById('taskTitleInput');
+  const taskDueInput = document.getElementById('taskDueInput');
+  const taskModalCancel = document.getElementById('taskModalCancel');
+  const taskModalConfirm = document.getElementById('taskModalConfirm');
+  let modalMode = 'add'; // 'add' | 'edit'
+  let modalTargetId = null; // add: 親タスクのID(nullならルート) / edit: 編集対象タスクのID
+
+  function openTaskModal(mode, id) {
+    modalMode = mode;
+    modalTargetId = id || null;
+
+    if (mode === 'edit') {
+      const task = state.tasks.find((t) => t.id === id);
+      if (!task) return;
+      taskModalTitle.textContent = 'タスクを編集';
+      taskTitleInput.value = task.title;
+      taskDueInput.value = task.dueDate || '';
+      taskModalConfirm.textContent = '保存';
+    } else {
+      taskModalTitle.textContent = id ? '派生タスクを追加' : 'タスクを追加';
+      taskTitleInput.value = '';
+      taskDueInput.value = '';
+      taskModalConfirm.textContent = '追加';
+    }
+
+    taskModalBackdrop.classList.add('open');
+    setTimeout(() => taskTitleInput.focus(), 0);
+  }
+
+  function closeTaskModal() {
+    taskModalBackdrop.classList.remove('open');
+  }
+
+  function confirmTaskModal() {
+    const title = taskTitleInput.value.trim();
+    if (!title) {
+      taskTitleInput.focus();
+      return;
+    }
+
+    if (modalMode === 'edit') {
+      const task = state.tasks.find((t) => t.id === modalTargetId);
+      if (task) {
+        task.title = title;
+        task.dueDate = taskDueInput.value || null;
+      }
+    } else {
+      state.tasks.push({
+        id: newId(),
+        title,
+        completed: false,
+        parentId: modalTargetId,
+        dueDate: taskDueInput.value || null,
+      });
+    }
+
+    pushData();
+    render();
+    closeTaskModal();
+  }
+
+  taskModalCancel.addEventListener('click', closeTaskModal);
+  taskModalConfirm.addEventListener('click', confirmTaskModal);
+  taskModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === taskModalBackdrop) closeTaskModal();
+  });
+  taskTitleInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirmTaskModal();
+    if (e.key === 'Escape') closeTaskModal();
+  });
+
+  window.addChildTask = (parentId) => promptNewTask(parentId);
+
+  document.getElementById('fabBtn').addEventListener('click', () => promptNewTask(null));
+
+  // --- ドラッグ&ドロップによる並び替え(同じ親を持つタスク同士のみ) ---
+  // マウス・タッチ・ペンを同じ仕組みで扱えるPointer Eventsを使い、PC/タブレット/スマホすべてに対応する
+  function findTaskById(id) {
+    return state.tasks.find((t) => t.id === id);
+  }
+
+  function reorderTask(draggedId, targetId, before) {
+    const draggedIdx = state.tasks.findIndex((t) => t.id === draggedId);
+    if (draggedIdx === -1) return;
+    const [draggedTask] = state.tasks.splice(draggedIdx, 1);
+
+    const targetIdx = state.tasks.findIndex((t) => t.id === targetId);
+    if (targetIdx === -1) {
+      state.tasks.push(draggedTask);
+    } else {
+      const insertAt = before ? targetIdx : targetIdx + 1;
+      state.tasks.splice(insertAt, 0, draggedTask);
+    }
+
+    render();
+    pushData();
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const card = handle.closest('.card');
+    if (!card) return;
+    const draggedId = handle.dataset.dragId;
+    const draggedTask = findTaskById(draggedId);
+    if (!draggedTask) return;
+
+    e.preventDefault();
+    isDragging = true;
+    card.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+
+    let dropTarget = null; // { id, before }
+
+    function clearDropMarks() {
+      document.querySelectorAll('.card.drop-before, .card.drop-after').forEach((el) => {
+        el.classList.remove('drop-before', 'drop-after');
+      });
+    }
+
+    function onMove(ev) {
+      // 同じ親を持つカードだけをドロップ先の候補にする(階層をまたいだ並び替えは対象外)
+      const siblingEls = Array.from(document.querySelectorAll('.card[data-id]')).filter((el) => {
+        if (el === card) return false;
+        const id = el.dataset.id;
+        const t = findTaskById(id);
+        return t && t.parentId === (draggedTask.parentId || null);
+      });
+
+      clearDropMarks();
+      let closestEl = null;
+      let closestDist = Infinity;
+      let closestBefore = true;
+
+      siblingEls.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const dist = Math.abs(ev.clientY - midY);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestEl = el;
+          closestBefore = ev.clientY < midY;
+        }
+      });
+
+      if (closestEl) {
+        closestEl.classList.add(closestBefore ? 'drop-before' : 'drop-after');
+        dropTarget = { id: closestEl.dataset.id, before: closestBefore };
+      } else {
+        dropTarget = null;
+      }
+    }
+
+    function onUp() {
+      card.classList.remove('dragging');
+      clearDropMarks();
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      isDragging = false;
+
+      if (dropTarget) {
+        reorderTask(draggedId, dropTarget.id, dropTarget.before);
+      }
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  });
+
+  syncData();
+
+  // ほぼリアルタイム同期: 5秒おきに最新データを取得(送信中はスキップ)
+  const SYNC_INTERVAL_MS = 5000;
+  setInterval(() => {
+    if (pendingPushCount === 0 && !isDragging) syncData();
+  }, SYNC_INTERVAL_MS);
+
+  // アプリに戻ってきたタイミングでも即座に同期し直す
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') syncData();
+  });
+})();
+</script>
+</body>
+</html>
